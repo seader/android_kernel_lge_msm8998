@@ -38,7 +38,7 @@
 
 #include <linux/hrtimer.h>
 #include <linux/semaphore.h>
-#include <linux/wakelock.h>
+#include <linux/pm_wakeup.h>
 
 #define WATCHDOG_TIMEOUT    10  /* 10 timer cycles */
 
@@ -47,12 +47,12 @@ static bool g_bTimerStarted = false;
 static struct hrtimer g_tspTimer;
 static ktime_t g_ktTimerPeriod; /* ktime_t equivalent of g_nTimerPeriodMs */
 static int g_nWatchdogCounter = 0;
-static struct wake_lock g_tspWakelock;
+static struct wakeup_source g_tspWakelock;
 
 #ifndef NUM_EXTRA_BUFFERS
 #define NUM_EXTRA_BUFFERS 0
 #endif
-struct semaphore g_hSemaphore;
+struct semaphore dw7912_g_hSemaphore;
 
 /* Forward declarations */
 static void VibeOSKernelLinuxStartTimer(void);
@@ -70,18 +70,15 @@ static inline int VibeSemIsLocked(struct semaphore *lock)
 static enum hrtimer_restart VibeOSKernelTimerProc(struct hrtimer *timer)
 {
     /* Return right away if timer is not supposed to run */
-    if (!g_bTimerStarted) {
-        pr_err("%s: g_bTimerStarted : %d\n", __func__, g_bTimerStarted);
-        return  HRTIMER_NORESTART;
-    }
+    if (!g_bTimerStarted) return  HRTIMER_NORESTART;
 
     /* Scheduling next timeout value right away */
     if (++g_nWatchdogCounter < WATCHDOG_TIMEOUT)
         hrtimer_forward_now(timer, g_ktTimerPeriod);
 
-    if (VibeSemIsLocked(&g_hSemaphore))
+    if (VibeSemIsLocked(&dw7912_g_hSemaphore))
     {
-        up(&g_hSemaphore);
+        up(&dw7912_g_hSemaphore);
     }
 
    if (g_nWatchdogCounter < WATCHDOG_TIMEOUT)
@@ -98,7 +95,7 @@ static enum hrtimer_restart VibeOSKernelTimerProc(struct hrtimer *timer)
 
 static int VibeOSKernelProcessData(void* data)
 {
-    SendOutputData();
+    Dw7912SendOutputData();
 
     /* Reset watchdog counter */
     g_nWatchdogCounter = 0;
@@ -115,7 +112,7 @@ static void VibeOSKernelLinuxInitTimer(void)
 
     /* Initialize a 5ms-timer with VibeOSKernelTimerProc as timer callback (interrupt driven)*/
     g_tspTimer.function = VibeOSKernelTimerProc;
-    wake_lock_init(&g_tspWakelock, WAKE_LOCK_SUSPEND, "tspdrv");
+	wakeup_source_init(&g_tspWakelock, "tspdrv");
 }
 
 static void VibeOSKernelLinuxStartTimer(void)
@@ -123,11 +120,15 @@ static void VibeOSKernelLinuxStartTimer(void)
     /* Reset watchdog counter */
     g_nWatchdogCounter = 0;
 
+    DbgOutInfo(("VibeOSKernelLinuxStartTimer 1\n"));
+
     if (!g_bTimerStarted)
     {
-        wake_lock(&g_tspWakelock);
+    DbgOutInfo(("VibeOSKernelLinuxStartTimer 2\n"));
+
+        __pm_stay_awake(&g_tspWakelock);
         /* (Re-)Initialize the semaphore used with the timer */
-        sema_init(&g_hSemaphore, NUM_EXTRA_BUFFERS);
+        sema_init(&dw7912_g_hSemaphore, NUM_EXTRA_BUFFERS);
 
         g_bTimerStarted = true;
 
@@ -137,44 +138,46 @@ static void VibeOSKernelLinuxStartTimer(void)
         hrtimer_start(&g_tspTimer, g_ktTimerPeriod, HRTIMER_MODE_REL);
     }
 #ifdef IMMVIBESPI_USE_BUFFERFULL
+	
     if (ImmVibeSPI_ForceOut_BufferFull()) do
 #else
     else
 #endif
     {
         int res;  
+    DbgOutInfo(("VibeOSKernelLinuxStartTimer 3\n"));
         /* 
         ** Use interruptible version of down to be safe 
         ** (try to not being stuck here if the semaphore is not freed for any reason)
         */
-        res = down_interruptible(&g_hSemaphore);  /* wait for the semaphore to be freed by the timer */
+        res = down_interruptible(&dw7912_g_hSemaphore);  /* wait for the semaphore to be freed by the timer */
         if (res != 0)
         {
             DbgOutInfo(("VibeOSKernelLinuxStartTimer: down_interruptible interrupted by a signal.\n"));
         }
     }
 #ifdef IMMVIBESPI_USE_BUFFERFULL
-    /* wait if amplifier buffer is full or emptying buffer to realign silence with real time */
+
     while (ImmVibeSPI_ForceOut_BufferFull() > 0);
 #endif
-
     VibeOSKernelProcessData(NULL);
+    DbgOutInfo(("VibeOSKernelLinuxStartTimer 5\n"));
 
     /* 
     ** Because of possible NACK handling, the  VibeOSKernelProcessData() call above could take more than
     ** 5 ms on some piezo devices that are buffering output samples; when this happens, the timer
-    ** interrupt will release the g_hSemaphore while VibeOSKernelProcessData is executing and the player
+    ** interrupt will release the dw7912_g_hSemaphore while VibeOSKernelProcessData is executing and the player
     ** will immediately send the new packet to the SPI layer when VibeOSKernelProcessData exits, which
     ** could cause another NACK right away. To avoid that, we'll create a small delay if the semaphore
     ** was released when VibeOSKernelProcessData exits, by acquiring the mutex again and waiting for
     ** the timer to release it.
     */
 #if defined(NUM_EXTRA_BUFFERS) && (NUM_EXTRA_BUFFERS)
-    if (g_bTimerStarted && !VibeSemIsLocked(&g_hSemaphore))
+    if (g_bTimerStarted && !VibeSemIsLocked(&dw7912_g_hSemaphore))
     {
         int res;
 
-        res = down_interruptible(&g_hSemaphore);
+        res = down_interruptible(&dw7912_g_hSemaphore);
 
         if (res != 0)
         {
@@ -188,25 +191,21 @@ static void VibeOSKernelLinuxStopTimer(void)
 {
     if (g_bTimerStarted)
     {
-        if (VibeSemIsLocked(&g_hSemaphore)) {
-            pr_err("%s, VibeSemIsLocked wake up semaphore\n", __func__);
-            up(&g_hSemaphore);
-        }
         g_bTimerStarted = false;
     }
 
     /* Reset samples buffers */
-    ResetOutputData();
+    Dw7912ResetOutputData();
 
     g_bIsPlaying = false;
-    wake_unlock(&g_tspWakelock);
+    __pm_relax(&g_tspWakelock);
 } 
 
 static void VibeOSKernelLinuxTerminateTimer(void)
 {
     VibeOSKernelLinuxStopTimer();
     hrtimer_cancel(&g_tspTimer);
-    wake_lock_destroy(&g_tspWakelock);
+    wakeup_source_trash(&g_tspWakelock);
 
-    if (VibeSemIsLocked(&g_hSemaphore)) up(&g_hSemaphore);
+    if (VibeSemIsLocked(&dw7912_g_hSemaphore)) up(&dw7912_g_hSemaphore);
 }

@@ -40,6 +40,9 @@
 #include <asm/uaccess.h>
 #include <asm/atomic.h>
 #include "tspdrv.h"
+#ifdef CONFIG_MACH_LGE
+#include <soc/qcom/lge/board_lge.h>
+#endif /* CONFIG_MACH_LGE */
 
 static int g_nTimerPeriodMs = 5; /* 5ms timer by default. This variable could be used by the SPI.*/
 
@@ -54,7 +57,7 @@ static atomic_t g_bRuntimeRecord;
 #endif
 
 /* Device name and version information */
-#define VERSION_STR " v5.4.4.1\n"                   /* DO NOT CHANGE - this is auto-generated */
+#define VERSION_STR " v5.4.2.0\n"                   /* DO NOT CHANGE - this is auto-generated */
 #define VERSION_STR_LEN 16                          /* account extra space for future extra digits in version number */
 static char g_szDeviceName[  (VIBE_MAX_DEVICE_NAME_LENGTH
                             + VERSION_STR_LEN)
@@ -96,7 +99,7 @@ static int g_nMajor = 0;
     #include "VibeOSKernelLinuxTime.c"
 #endif
 
-asmlinkage void _DbgOut(int level, const char *fmt,...)
+asmlinkage void _Dw7912DbgOut(int level, const char *fmt,...)
 {
     static char printk_buf[MAX_DEBUG_BUFFER_LENGTH];
     static char prefix[6][4] =
@@ -120,7 +123,7 @@ asmlinkage void _DbgOut(int level, const char *fmt,...)
     }
 }
 
-asmlinkage static void _DbgOutV(int level, const char *fmt,va_list args)
+asmlinkage static void _Dw7912DbgOutV(int level, const char *fmt,va_list args)
 {
     static char printk_buf[MAX_DEBUG_BUFFER_LENGTH];
     static char prefix[6][4] =
@@ -135,86 +138,86 @@ asmlinkage static void _DbgOutV(int level, const char *fmt,va_list args)
 
 }
 
-asmlinkage void _DbgOutTemp(const char *fmt,...)
+asmlinkage void _Dw7912DbgOutTemp(const char *fmt,...)
 {
     int nDbgLevel = atomic_read(&g_nDebugLevel);
     if (DBL_TEMP <= nDbgLevel)
     {
         va_list args;
         va_start(args, fmt);
-        _DbgOutV(DBL_TEMP, fmt, args);
+        _Dw7912DbgOutV(DBL_TEMP, fmt, args);
         va_end(args);
     }
 }
 
-asmlinkage void _DbgOutFatal(const char *fmt,...)
+asmlinkage void _DW7912DbgOutFatal(const char *fmt,...)
 {
     int nDbgLevel = atomic_read(&g_nDebugLevel);
     if (DBL_FATAL <= nDbgLevel)
     {
         va_list args;
         va_start(args, fmt);
-        _DbgOutV(DBL_FATAL, fmt, args);
+        _Dw7912DbgOutV(DBL_FATAL, fmt, args);
         va_end(args);
     }
 }
 
-asmlinkage void _DbgOutErr(const char *fmt,...)
+asmlinkage void _Dw7912DbgOutErr(const char *fmt,...)
 {
     int nDbgLevel = atomic_read(&g_nDebugLevel);
     if (DBL_ERROR <= nDbgLevel)
     {
         va_list args;
         va_start(args, fmt);
-        _DbgOutV(DBL_ERROR, fmt, args);
+        _Dw7912DbgOutV(DBL_ERROR, fmt, args);
         va_end(args);
     }
 }
 
-asmlinkage void _DbgOutWarn(const char *fmt,...)
+asmlinkage void _Dw7912DbgOutWarn(const char *fmt,...)
 {
     int nDbgLevel = atomic_read(&g_nDebugLevel);
     if (DBL_WARNING <= nDbgLevel)
     {
         va_list args;
         va_start(args, fmt);
-        _DbgOutV(DBL_WARNING, fmt, args);
+        _Dw7912DbgOutV(DBL_WARNING, fmt, args);
         va_end(args);
     }
 }
 
-asmlinkage void _DbgOutInfo(const char *fmt,...)
+asmlinkage void _Dw7912DbgOutInfo(const char *fmt,...)
 {
     int nDbgLevel = atomic_read(&g_nDebugLevel);
     if (DBL_INFO <= nDbgLevel)
     {
         va_list args;
         va_start(args, fmt);
-        _DbgOutV(DBL_INFO, fmt, args);
+        _Dw7912DbgOutV(DBL_INFO, fmt, args);
         va_end(args);
     }
 }
 
-asmlinkage void _DbgOutVerbose(const char *fmt,...)
+asmlinkage void _Dw7912DbgOutVerbose(const char *fmt,...)
 {
     int nDbgLevel = atomic_read(&g_nDebugLevel);
     if (DBL_VERBOSE <= nDbgLevel)
     {
         va_list args;
         va_start(args, fmt);
-        _DbgOutV(DBL_VERBOSE, fmt, args);
+        _Dw7912DbgOutV(DBL_VERBOSE, fmt, args);
         va_end(args);
     }
 }
 
-asmlinkage void _DbgOutOverkill(const char *fmt,...)
+asmlinkage void _Dw7912DbgOutOverkill(const char *fmt,...)
 {
     int nDbgLevel = atomic_read(&g_nDebugLevel);
     if (DBL_OVERKILL <= nDbgLevel)
     {
         va_list args;
         va_start(args, fmt);
-        _DbgOutV(DBL_OVERKILL, fmt, args);
+        _Dw7912DbgOutV(DBL_OVERKILL, fmt, args);
         va_end(args);
     }
 }
@@ -291,7 +294,21 @@ static int __init tspdrv_init(void)
 {
     int nRet, i;   /* initialized below */
 
+#ifdef CONFIG_MACH_LGE
+    // ~ rev.A : dw7912
+    // rev.B ~ : dw7800
+    enum hw_rev_no revid = lge_get_board_rev_no();
+
+    pr_err("hw_rev:%s id:%d\n", lge_get_board_revision(), revid);
+    if( revid >= HW_REV_B ) {
+        pr_err("dw7912 tspdrv_init skip...\n");
+        return 0;
+    }
+#endif /* CONFIG_MACH_LGE */
+
     atomic_set(&g_nDebugLevel, DBL_ERROR);
+//    atomic_set(&g_nDebugLevel, DBL_OVERKILL);
+
 #ifdef VIBE_RUNTIME_RECORD
     atomic_set(&g_bRuntimeRecord, 0);
     DbgOutErr(("*** tspdrv: runtime recorder feature is ON for debugging which should be OFF in release version.\n"
@@ -331,7 +348,7 @@ static int __init tspdrv_init(void)
 
     ImmVibeSPI_ForceOut_Initialize();
     VibeOSKernelLinuxInitTimer();
-    ResetOutputData();
+    Dw7912ResetOutputData();
 
     /* Get and concatenate device name and initialize data buffer */
     g_cchDeviceName = 0;
@@ -351,6 +368,18 @@ static int __init tspdrv_init(void)
 
 static void __exit tspdrv_exit(void)
 {
+#ifdef CONFIG_MACH_LGE
+    // ~ rev.A : dw7912
+    // rev.B ~ : dw7800
+    enum hw_rev_no revid = lge_get_board_rev_no();
+
+    pr_err("hw_rev:%s id:%d\n", lge_get_board_revision(), revid);
+    if( revid >= HW_REV_B ) {
+        pr_err("dw7912 tspdrv_exit skip...\n");
+        return;
+    }
+#endif /* CONFIG_MACH_LGE */
+
     DbgOutInfo(("tspdrv: cleanup_module.\n"));
 
     DbgRecorderTerminate(());
@@ -455,9 +484,9 @@ static ssize_t write(struct file *file, const char *buf, size_t count, loff_t *p
     }
 
     /* Extract force output samples and save them in an internal buffer */
-    if (!SaveOutputData(g_cWriteBuffer, count))
+    if (!Dw7912SaveOutputData(g_cWriteBuffer, count))
     {
-        DbgOutErr(("tspdrv: SaveOutputData failed.\n"));
+        DbgOutErr(("tspdrv: Dw7912SaveOutputData failed.\n"));
         return -EIO;
     }
 
@@ -475,6 +504,8 @@ static long unlocked_ioctl(struct file *file, unsigned int cmd, unsigned long ar
 static int ioctl(struct inode *inode, struct file *file, unsigned int cmd, unsigned long arg)
 #endif
 {
+//	pr_err("%s, hoseong.kang TSPDRV ioctl cmd = %d\n", __func__, cmd);
+
     switch (cmd)
     {
         case TSPDRV_SET_MAGIC_NUMBER:
@@ -506,10 +537,8 @@ static int ioctl(struct inode *inode, struct file *file, unsigned int cmd, unsig
         case TSPDRV_GET_NUM_ACTUATORS:
             return NUM_ACTUATORS;
 
-#ifdef IMMVIBESPI_DEVICE_GETSTATUS_SUPPORT
         case TSPDRV_GET_DEVICE_STATUS:
             return ImmVibeSPI_Device_GetStatus(arg);
-#endif
 
 #ifdef IMMVIBESPI_MULTIPARAM_SUPPORT
         case TSPDRV_GET_PARAM_FILE_ID:
@@ -580,7 +609,7 @@ static int ioctl(struct inode *inode, struct file *file, unsigned int cmd, unsig
         case TSPDRV_SET_DEVICE_PARAMETER:
             {
                 device_parameter deviceParam;
-
+//				pr_err("%s, hoseong.kang TSPDRV_SET_DEVICE_PARAMETER\n", __func__);
                 if (0 != copy_from_user((void *)&deviceParam, (const void __user *)arg, sizeof(deviceParam)))
                 {
                     /* Error copying the data */
@@ -595,11 +624,11 @@ static int ioctl(struct inode *inode, struct file *file, unsigned int cmd, unsig
                         g_nTimerPeriodMs = deviceParam.nDeviceParamValue;
 
 
-
 #ifdef CONFIG_HIGH_RES_TIMERS
                         /* For devices using high resolution timer we need to update the ktime period value */
                         g_ktTimerPeriod = ktime_set(0, g_nTimerPeriodMs * 1000000);
 #endif
+//						pr_err("%s, hoseong.kang VIBE_KP_CFG_UPDATE_RATE_MS g_nTimerPeriodMs : %d\n", __func__, g_nTimerPeriodMs);
                         break;
 
                     case VIBE_KP_CFG_FREQUENCY_PARAM1:
