@@ -475,13 +475,21 @@ static long unlocked_ioctl(struct file *file, unsigned int cmd, unsigned long ar
 static int ioctl(struct inode *inode, struct file *file, unsigned int cmd, unsigned long arg)
 #endif
 {
+    char arg_buffer[128];
+
+    snprintf(arg_buffer, sizeof(arg_buffer), "%ld", arg);
+
     switch (cmd)
     {
         case TSPDRV_SET_MAGIC_NUMBER:
+            DbgOut((DBL_ERROR, "TSPDRVLOG: Setting Magic num: \n"));
+	    DbgOut((DBL_ERROR, arg_buffer));
             file->private_data = (void*)TSPDRV_MAGIC_NUMBER;
             break;
 
         case TSPDRV_ENABLE_AMP:
+            DbgOut((DBL_ERROR, "TSPDRVLOG: EnableAmp: \n"));
+	    DbgOut((DBL_ERROR, arg_buffer));
             ImmVibeSPI_ForceOut_AmpEnable(arg);
 #ifdef VIBE_RUNTIME_RECORD
             if (atomic_read(&g_bRuntimeRecord)) {
@@ -494,6 +502,8 @@ static int ioctl(struct inode *inode, struct file *file, unsigned int cmd, unsig
             break;
 
         case TSPDRV_DISABLE_AMP:
+            DbgOut((DBL_ERROR, "TSPDRVLOG: DisableAmp: \n"));
+	    DbgOut((DBL_ERROR, arg_buffer));
             ImmVibeSPI_ForceOut_AmpDisable(arg);
 #ifdef VIBE_RUNTIME_RECORD
             if (atomic_read(&g_bRuntimeRecord)) {
@@ -508,11 +518,15 @@ static int ioctl(struct inode *inode, struct file *file, unsigned int cmd, unsig
 
 #ifdef IMMVIBESPI_DEVICE_GETSTATUS_SUPPORT
         case TSPDRV_GET_DEVICE_STATUS:
+            DbgOut((DBL_ERROR, "TSPDRVLOG: GetDeviceStatus: \n"));
+	    DbgOut((DBL_ERROR, arg_buffer));
             return ImmVibeSPI_Device_GetStatus(arg);
 #endif
 
 #ifdef IMMVIBESPI_MULTIPARAM_SUPPORT
         case TSPDRV_GET_PARAM_FILE_ID:
+            DbgOut((DBL_ERROR, "TSPDRVLOG: GetParamFileID: \n"));
+	    DbgOut((DBL_ERROR, arg_buffer));
             return ImmVibeSPI_Device_GetParamFileId();
 #endif
 
@@ -587,7 +601,22 @@ static int ioctl(struct inode *inode, struct file *file, unsigned int cmd, unsig
                     DbgOutErr(("tspdrv: copy_from_user failed to copy kernel parameter data.\n"));
                     return -1;
                 }
+                {
+                    char buff1[32];
+                    char buff2[32];
+                    char buff3[32];
+                    snprintf(buff1, sizeof(buff1), "%d", deviceParam.nDeviceIndex);
+                    snprintf(buff2, sizeof(buff2), "%d", deviceParam.nDeviceParamID);
+                    snprintf(buff3, sizeof(buff3), "%d", deviceParam.nDeviceParamValue);
 
+
+                    DbgOut((DBL_ERROR, "TSPDRVLOG: DeviceParam nDeviceIndex: \n"));
+	            DbgOut((DBL_ERROR, buff1));
+                    DbgOut((DBL_ERROR, "TSPDRVLOG: DeviceParam nDeviceParamID: \n"));
+	            DbgOut((DBL_ERROR, buff2));
+                    DbgOut((DBL_ERROR, "TSPDRVLOG: DeviceParam nDeviceParamValue: \n"));
+	            DbgOut((DBL_ERROR, buff3));
+                }
                 switch (deviceParam.nDeviceParamID)
                 {
                     case VIBE_KP_CFG_UPDATE_RATE_MS:
