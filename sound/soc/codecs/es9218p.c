@@ -41,7 +41,7 @@
 
 #include    "es9218p.h"
 
-#define     ES9218P_SYSFS               // use this feature only for user debug, not release
+#define     ES9218P_SYSFS 0               // use this feature only for user debug, not release
 #define     SHOW_LOGS                   // show debug logs only for debug mode, not release
 
 //#define     USE_HPAHiQ                  // THD increased by ~2dB and Power Consumption increasded by ~2mA
@@ -573,19 +573,6 @@ static ssize_t es9218_registers_store(struct device *dev,
 static DEVICE_ATTR(registers, S_IWUSR | S_IRUGO,
         es9218_registers_show, es9218_registers_store);
 
-static struct attribute *es9218_attrs[] = {
-#ifdef CONFIG_SND_SOC_LGE_ESS_DIGITAL_FILTER
-	&dev_attr_fade_mute_count.attr,
-	&dev_attr_fade_mute_term.attr,
-#endif
-    &dev_attr_registers.attr,
-    NULL
-};
-
-static const struct attribute_group es9218_attr_group = {
-    .attrs = es9218_attrs,
-};
-
 #endif  //  End of  #ifdef  ES9218P_SYSFS
 
 
@@ -894,7 +881,49 @@ static int es9218p_sabre_amp_stop(struct i2c_client *client, int headset)
     return ret;
 }
 
+#ifdef ES9218P_SYSFS
+static ssize_t set_forced_sabre_mode(struct device *dev,
+                   struct device_attribute *attr,
+                   const char *buf, size_t count)
+{
+    int headset;
 
+    if (!strncmp(buf, "normal", strlen("normal")))
+        headset = 1;
+    else if (!strncmp(buf, "hifi", strlen("hifi")))
+        headset = 2;
+    else if (!strncmp(buf, "aux", strlen("aux")))
+        headset = 3;
+    else 
+        headset = 0;
+
+    es9218p_sabre_amp_start(g_es9218_priv->i2c_client, headset);
+
+    return count;
+}
+
+static ssize_t get_forced_sabre_mode(struct device *dev,
+	                    struct device_attribute *attr, char *buf)
+{
+    return 0;
+}
+static DEVICE_ATTR(sabre_mode, S_IRUSR | S_IWUSR, get_forced_sabre_mode, set_forced_sabre_mode);
+
+static struct attribute *es9218_attrs[] = {
+#ifdef CONFIG_SND_SOC_LGE_ESS_DIGITAL_FILTER
+	&dev_attr_fade_mute_count.attr,
+	&dev_attr_fade_mute_term.attr,
+#endif
+    &dev_attr_registers.attr,
+    &dev_attr_sabre_mode.attr,
+    NULL
+};
+
+static const struct attribute_group es9218_attr_group = {
+    .attrs = es9218_attrs,
+};
+
+#endif
 /*
  *  Program stage1 and stage2 filter coefficients
  */
